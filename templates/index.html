@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Fusion HAT Debug</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: monospace; background: #1a1a2e; color: #eee; padding: 16px; }
+    h1 { color: #00d4ff; margin-bottom: 12px; font-size: 18px; }
+    .card { background: #16213e; border: 1px solid #0f3460; border-radius: 8px; padding: 12px; margin-bottom: 10px; }
+    .card h2 { font-size: 13px; color: #00d4ff; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+    .row { display: flex; gap: 8px; flex-wrap: wrap; }
+    .sensor { background: #0f3460; border-radius: 4px; padding: 8px 12px; min-width: 80px; }
+    .sensor .label { font-size: 10px; color: #888; }
+    .sensor .value { font-size: 18px; font-weight: bold; }
+    .charging { color: #00ff88; }
+    .discharging { color: #ff6b6b; }
+    .motor-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+    .motor { background: #0f3460; border-radius: 4px; padding: 8px; text-align: center; }
+    .motor .name { font-size: 11px; color: #888; }
+    .motor .val { font-size: 16px; font-weight: bold; color: #00d4ff; }
+    .motor-controls { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-top: 4px; }
+    .motor-btn { background: #0f3460; border: 1px solid #00d4ff; color: #00d4ff; padding: 6px; border-radius: 4px; cursor: pointer; font-size: 11px; }
+    .motor-btn:hover { background: #00d4ff; color: #1a1a2e; }
+    .motor-btn.stop { border-color: #ff6b6b; color: #ff6b6b; }
+    .motor-btn.stop:hover { background: #ff6b6b; color: #1a1a2e; }
+    .motor-btn.rev { border-color: #ffaa00; color: #ffaa00; }
+    .motor-btn.rev:hover { background: #ffaa00; color: #1a1a2e; }
+    .refresh { font-size: 10px; color: #555; margin-top: 4px; }
+    .note { font-size: 10px; color: #666; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <h1>Fusion HAT Debug</h1>
+  <div class="card">
+    <h2>Battery</h2>
+    <div class="row">
+      <div class="sensor"><div class="label">CAPACITY</div><div class="value" id="cap">--</div></div>
+      <div class="sensor"><div class="label">VOLTAGE</div><div class="value" id="volt">--</div></div>
+      <div class="sensor"><div class="label">STATUS</div><div class="value" id="bstat">--</div></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>ADC</h2>
+    <div class="row">
+      <div class="sensor"><div class="label">CH0</div><div class="value" id="adc0">--</div></div>
+      <div class="sensor"><div class="label">CH1</div><div class="value" id="adc1">--</div></div>
+      <div class="sensor"><div class="label">CH2</div><div class="value" id="adc2">--</div></div>
+      <div class="sensor"><div class="label">CH3</div><div class="value" id="adc3">--</div></div>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Motors</h2>
+    <div class="motor-grid">
+      <div class="motor"><div class="name">M0 RF</div><div class="val" id="m0">0</div></div>
+      <div class="motor"><div class="name">M1 LF</div><div class="val" id="m1">0</div></div>
+      <div class="motor"><div class="name">M2 LB</div><div class="val" id="m2">0</div></div>
+      <div class="motor"><div class="name">M3 RB</div><div class="val" id="m3">0</div></div>
+    </div>
+    <div class="motor-controls">
+      <button class="motor-btn" onclick="setMotor('M0', 50)">FWD M0</button>
+      <button class="motor-btn" onclick="setMotor('M1', 50)">FWD M1</button>
+      <button class="motor-btn" onclick="setMotor('M2', 50)">FWD M2</button>
+      <button class="motor-btn" onclick="setMotor('M3', 50)">FWD M3</button>
+    </div>
+    <div class="motor-controls">
+      <button class="motor-btn rev" onclick="setMotor('M0', -50)">REV M0</button>
+      <button class="motor-btn rev" onclick="setMotor('M1', -50)">REV M1</button>
+      <button class="motor-btn rev" onclick="setMotor('M2', -50)">REV M2</button>
+      <button class="motor-btn rev" onclick="setMotor('M3', -50)">REV M3</button>
+    </div>
+    <div class="motor-controls">
+      <button class="motor-btn stop" onclick="stopMotor('M0')">STOP</button>
+      <button class="motor-btn stop" onclick="stopMotor('M1')">STOP</button>
+      <button class="motor-btn stop" onclick="stopMotor('M2')">STOP</button>
+      <button class="motor-btn stop" onclick="stopMotor('M3')">STOP</button>
+    </div>
+    <div class="motor-controls">
+      <button class="motor-btn stop" onclick="stopAll()" style="grid-column: span 4; width: 100%;">STOP ALL</button>
+    </div>
+    <div class="note">FWD = +50, REV = -50</div>
+    <div class="refresh">Updated: <span id="ts">--</span></div>
+  </div>
+  <script>
+    async function fetchSensors() {
+      try {
+        const r = await fetch('/api/sensors');
+        const d = await r.json();
+        document.getElementById('cap').textContent = d.battery.capacity + '%';
+        document.getElementById('volt').textContent = d.battery.voltage + 'V';
+        const s = document.getElementById('bstat');
+        s.textContent = d.battery.status;
+        s.className = 'value ' + (d.battery.is_charging ? 'charging' : 'discharging');
+        for (let i = 0; i < 4; i++) document.getElementById('adc'+i).textContent = d.adc[i].toFixed(2) + 'V';
+        document.getElementById('m0').textContent = d.motors.M0;
+        document.getElementById('m1').textContent = d.motors.M1;
+        document.getElementById('m2').textContent = d.motors.M2;
+        document.getElementById('m3').textContent = d.motors.M3;
+        document.getElementById('ts').textContent = new Date(d.timestamp * 1000).toLocaleTimeString();
+      } catch(e) { console.error(e); }
+    }
+    async function setMotor(n, p) {
+      await fetch('/api/motor/'+n, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({power: p})
+      });
+      fetchSensors();
+    }
+    async function stopMotor(n) { await fetch('/api/motor/'+n+'/stop', { method: 'POST' }); fetchSensors(); }
+    async function stopAll() { await fetch('/api/stop', { method: 'POST' }); fetchSensors(); }
+    fetchSensors();
+    setInterval(fetchSensors, 2000);
+  </script>
+</body>
+</html>
